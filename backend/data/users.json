@@ -1,0 +1,10 @@
+{
+    "gabe": {
+        "pushover_code": "ukm6mx35m9prrss1s5v1dbvcurkz7h",
+        "price_limit": null,
+        "retailer_exclusions": [
+            "ebay"
+        ],
+        "notification_frequency_days": 1
+    }
+}
