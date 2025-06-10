@@ -1,0 +1,229 @@
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ExternalLink, TrendingDown } from 'lucide-react';
+import API from '../api';
+import Layout from '../components/Layout';
+import { cache, cacheKeys } from '../utils/cache';
+
+interface Retailer {
+  name: string;
+  price: number;
+  url: string;
+}
+
+interface ProductDetails {
+  url: string;
+  product_name: string;
+  image_url: string | null;
+  current_best_price: number;
+  average_price: number;
+  retailers: Retailer[];
+  last_updated: string;
+}
+
+export default function Product() {
+  const { productUrl } = useParams<{ productUrl: string }>();
+  const navigate = useNavigate();
+  const [product, setProduct] = useState<ProductDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!productUrl) return;
+    
+    fetchProductDetails();
+  }, [productUrl]);
+
+  const fetchProductDetails = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Check cache first
+      const decodedUrl = decodeURIComponent(productUrl!);
+      const cacheKey = cacheKeys.productDetails(decodedUrl);
+      const cachedData = cache.get<ProductDetails>(cacheKey);
+      
+      if (cachedData) {
+        setProduct(cachedData);
+        setLoading(false);
+        
+        // Check if cache is older than 2 minutes, fetch fresh data in background
+        const age = cache.getAge(cacheKey);
+        if (age && age > 2 * 60 * 1000) {
+          // Fetch fresh data in background
+          API.get(`/product/${productUrl}`)
+            .then(response => {
+              setProduct(response.data);
+              cache.set(cacheKey, response.data, 10 * 60 * 1000); // 10 minutes
+            })
+            .catch(() => {}); // Silently fail, we have cached data
+        }
+        return;
+      }
+      
+      // No cache, fetch from API
+      const response = await API.get(`/product/${productUrl}`);
+      setProduct(response.data);
+      
+      // Cache the response
+      cache.set(cacheKey, response.data, 10 * 60 * 1000); // 10 minutes
+    } catch (err) {
+      setError('Failed to load product details');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-AU', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const calculateSavings = (price: number, bestPrice: number) => {
+    const savings = price - bestPrice;
+    const percentage = ((savings / price) * 100).toFixed(0);
+    return { savings, percentage };
+  };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center h-64">
+          <div className="text-gray-500">Loading product details...</div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <Layout>
+        <div className="text-center py-8">
+          <p className="text-red-600 mb-4">{error || 'Product not found'}</p>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="text-blue-600 hover:underline"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </Layout>
+    );
+  }
+
+  const { savings, percentage } = calculateSavings(product.average_price, product.current_best_price);
+
+  return (
+    <Layout>
+      <div className="max-w-2xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center mb-4">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="p-2 hover:bg-gray-100 rounded-full mr-2"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-xl font-bold flex-1">{product.product_name}</h1>
+        </div>
+
+        {/* Product Image */}
+        {product.image_url && (
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+            <img
+              src={product.image_url}
+              alt={product.product_name}
+              className="w-full max-w-sm mx-auto h-64 object-contain"
+            />
+          </div>
+        )}
+
+        {/* Price Summary */}
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+          <div className="flex justify-between items-start mb-3">
+            <div>
+              <div className="text-2xl font-bold text-green-600">
+                ${product.current_best_price.toFixed(2)}
+              </div>
+              <div className="text-sm text-gray-500">
+                Best price at {product.retailers[0]?.name}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-gray-500">Average price</div>
+              <div className="text-lg">${product.average_price.toFixed(2)}</div>
+              {savings > 0 && (
+                <div className="text-sm text-green-600 flex items-center justify-end">
+                  <TrendingDown className="w-3 h-3 mr-1" />
+                  Save ${savings.toFixed(2)} ({percentage}%)
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Retailer Prices */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <h2 className="font-semibold mb-3">Compare Prices</h2>
+          <div className="space-y-2">
+            {product.retailers.map((retailer, index) => (
+              <div
+                key={retailer.name}
+                className={`flex justify-between items-center p-3 rounded ${
+                  index === 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
+                }`}
+              >
+                <div className="flex-1">
+                  <div className="font-medium">{retailer.name}</div>
+                  <div className="text-sm text-gray-500">{retailer.url}</div>
+                </div>
+                <div className="text-right">
+                  <div className={`font-semibold ${index === 0 ? 'text-green-600' : ''}`}>
+                    ${retailer.price.toFixed(2)}
+                  </div>
+                  {index > 0 && (
+                    <div className="text-xs text-gray-500">
+                      +${(retailer.price - product.current_best_price).toFixed(2)}
+                    </div>
+                  )}
+                </div>
+                <a
+                  href={`https://${retailer.url}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-3 p-2 hover:bg-gray-200 rounded"
+                >
+                  <ExternalLink className="w-4 h-4 text-gray-600" />
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Last Updated */}
+        <div className="text-center text-sm text-gray-500 mt-4">
+          Last updated: {formatDate(product.last_updated)}
+        </div>
+
+        {/* Original URL */}
+        <div className="text-center mt-2">
+          <a
+            href={product.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 hover:underline inline-flex items-center"
+          >
+            View on BuyWisely
+            <ExternalLink className="w-3 h-3 ml-1" />
+          </a>
+        </div>
+      </div>
+    </Layout>
+  );
+}
