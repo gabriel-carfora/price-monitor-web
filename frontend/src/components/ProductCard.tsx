@@ -76,13 +76,6 @@ export default function ProductCard({
               Best at {retailer}
             </div>
             
-            {/* Alert if best price equals average (no variation) */}
-            {!hasSavings && averagePrice > 0 && bestPrice === averagePrice && (
-              <div className="flex items-center text-amber-600 text-xs mt-1">
-                <AlertCircle className="w-3 h-3 mr-1" />
-                <span>No historical data - run aggregator</span>
-              </div>
-            )}
           </div>
           
           <button

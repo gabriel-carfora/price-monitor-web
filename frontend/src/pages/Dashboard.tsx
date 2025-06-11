@@ -13,6 +13,8 @@ interface ProductInfo {
   average_price?: number;
   product_name?: string;
   image_url?: string;
+  savings?: number;
+  last_updated?: string;
 }
 
 export default function Dashboard() {
@@ -53,17 +55,23 @@ export default function Dashboard() {
           fetchProductInfo(res.data);
         }
       })
-      .catch(() => setWatchlist([]));
+      .catch((error) => {
+        console.error('Failed to fetch watchlist:', error);
+        setWatchlist([]);
+      });
   }, [username, navigate]);
 
   const fetchProductInfo = async (urls: string[]) => {
     try {
       setLoading(true);
+      console.log('Fetching product info for URLs:', urls);
+      
       // Check cache first
       const cacheKey = cacheKeys.productInfo(urls);
       const cachedData = cache.get<ProductInfo[]>(cacheKey);
       
       if (cachedData) {
+        console.log('Using cached data:', cachedData);
         const infoMap: Record<string, ProductInfo> = {};
         cachedData.forEach((info: ProductInfo) => {
           infoMap[info.url] = info;
@@ -72,8 +80,10 @@ export default function Dashboard() {
         return; // Use cached data
       }
 
-      // If not cached, fetch from new endpoint
+      // If not cached, fetch from API
       const response = await API.post('/product-details', { urls });
+      console.log('API response:', response.data);
+      
       const infoMap: Record<string, ProductInfo> = {};
       response.data.forEach((info: ProductInfo) => {
         infoMap[info.url] = info;
@@ -104,16 +114,24 @@ export default function Dashboard() {
       cache.set(cacheKeys.watchlist(username!), updatedWatchlist, 10 * 60 * 1000);
       
       // Trigger price aggregation in the background
-      await API.post('/api/aggregate-prices');
+      try {
+        await API.post('/aggregate-prices');
+      } catch (aggError) {
+        console.warn('Price aggregation failed:', aggError);
+      }
       
       // Fetch updated product details
-      const newProductInfo = await API.post('/product-details', { urls: [newUrl] });
-      
-      // Update product info state
-      setProductInfo(prev => ({
-        ...prev,
-        [newUrl]: newProductInfo.data[0]
-      }));
+      try {
+        const newProductInfo = await API.post('/product-details', { urls: [newUrl] });
+        
+        // Update product info state
+        setProductInfo(prev => ({
+          ...prev,
+          [newUrl]: newProductInfo.data[0]
+        }));
+      } catch (infoError) {
+        console.warn('Failed to fetch product info for new URL:', infoError);
+      }
       
       // Clear the input
       setNewUrl('');
@@ -125,17 +143,21 @@ export default function Dashboard() {
   };
 
   const deleteUrl = async (url: string) => {
-    await API.delete(`/watchlist/${username}`, { data: { url } });
-    const updatedWatchlist = watchlist.filter((u) => u !== url);
-    setWatchlist(updatedWatchlist);
-    
-    // Update cache
-    cache.set(cacheKeys.watchlist(username!), updatedWatchlist, 10 * 60 * 1000);
-    
-    // Remove from productInfo
-    const newProductInfo = { ...productInfo };
-    delete newProductInfo[url];
-    setProductInfo(newProductInfo);
+    try {
+      await API.delete(`/watchlist/${username}`, { data: { url } });
+      const updatedWatchlist = watchlist.filter((u) => u !== url);
+      setWatchlist(updatedWatchlist);
+      
+      // Update cache
+      cache.set(cacheKeys.watchlist(username!), updatedWatchlist, 10 * 60 * 1000);
+      
+      // Remove from productInfo
+      const newProductInfo = { ...productInfo };
+      delete newProductInfo[url];
+      setProductInfo(newProductInfo);
+    } catch (error) {
+      console.error('Failed to delete URL:', error);
+    }
   };
 
   const navigateToProduct = (url: string) => {
@@ -148,7 +170,8 @@ export default function Dashboard() {
       setLoading(true);
       await API.post('/aggregate-prices');
       
-      // Refresh product info after aggregation
+      // Clear cache and refresh product info after aggregation
+      cache.clear();
       if (watchlist.length > 0) {
         await fetchProductInfo(watchlist);
       }
@@ -169,19 +192,22 @@ export default function Dashboard() {
             <p className="text-sm text-gray-500 text-center">No items yet.</p>
           ) : (
             watchlist.map((url) => {
-              const info = productInfo[url] || { url };
+              const info = productInfo[url];
+              
+              // Debug logging
+              console.log(`Product info for ${url}:`, info);
               
               return (
                 <ProductCard
                   key={url}
                   url={url}
-                  productName={info.product_name || 'Loading...'}
-                  bestPrice={info.best_price || 0}
-                  averagePrice={info.average_price || 0}
-                  retailer={info.retailer || 'Unknown'}
+                  productName={info?.product_name || 'Loading...'}
+                  bestPrice={info?.best_price || 0}
+                  averagePrice={info?.average_price || 0}
+                  retailer={info?.retailer || 'Unknown'}
                   onClick={() => navigateToProduct(url)}
                   onRemove={() => deleteUrl(url)}
-                  loading={loading && !info.best_price}
+                  loading={loading && !info?.best_price}
                 />
               );
             })
