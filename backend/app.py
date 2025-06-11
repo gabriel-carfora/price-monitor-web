@@ -15,6 +15,7 @@ from database import User, Watchlist, PriceHistory, SessionLocal, ProductDetails
 from scraper import scrape_product_async
 from pushover import send_pushover
 from cache import cache
+from scheduler import price_scheduler
 
 app = Flask(__name__)
 CORS(app)
@@ -105,7 +106,7 @@ class DatabaseService:
 
 @app.route("/api/users/<username>", methods=["GET", "PUT"])
 def user_settings(username):
-    """Manage user settings with caching"""
+    """Manage user settings with percentage-based price limits"""
     db = DatabaseService.get_session()
     
     try:
@@ -114,13 +115,53 @@ def user_settings(username):
             user_data = DatabaseService.get_user(db, username)
             return jsonify(user_data)
         
-        # PUT request - update user
+        # PUT request - update user with validation
         user_data = request.json
+        
+        # Validate price_limit is a percentage (0-100)
+        if 'price_limit' in user_data and user_data['price_limit'] is not None:
+            try:
+                price_limit = float(user_data['price_limit'])
+                if price_limit < 0 or price_limit > 100:
+                    return jsonify({"error": "Price limit must be between 0 and 100 percent"}), 400
+                user_data['price_limit'] = price_limit
+            except (ValueError, TypeError):
+                return jsonify({"error": "Price limit must be a valid number"}), 400
+        
         result = DatabaseService.update_user(db, username, user_data)
         return jsonify(result)
     
     finally:
         db.close()
+
+# Add a manual refresh endpoint for testing
+@app.route("/api/refresh-prices", methods=["POST"])
+def manual_refresh():
+    """Manually trigger price refresh for testing"""
+    try:
+        # Run a manual refresh in the background
+        def run_refresh():
+            asyncio.run(price_scheduler._daily_price_refresh())
+        
+        thread = threading.Thread(target=run_refresh)
+        thread.start()
+        
+        return jsonify({
+            "status": "Refresh started",
+            "message": "Manual price refresh has been initiated."
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Add endpoint to check scheduler status
+@app.route("/api/scheduler/status", methods=["GET"])
+def scheduler_status():
+    """Get scheduler status"""
+    return jsonify({
+        "running": price_scheduler.running,
+        "next_refresh": "Daily at 6:00 AM UTC"
+    })
+
 
 @app.route("/api/watchlist/<username>", methods=["GET", "POST", "DELETE"])
 def manage_watchlist(username):
@@ -326,7 +367,18 @@ def aggregate_prices():
         "message": "Price aggregation process has been initiated."
     })
 
+
 if __name__ == "__main__":
     # Ensure data directory exists
     os.makedirs("data", exist_ok=True)
-    app.run(debug=True, host='0.0.0.0')
+    
+    # Start the price refresh scheduler
+    print("Starting price refresh scheduler...")
+    price_scheduler.start()
+    
+    try:
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    finally:
+        # Clean shutdown
+        print("Stopping price refresh scheduler...")
+        price_scheduler.stop()

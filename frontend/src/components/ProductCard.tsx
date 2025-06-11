@@ -1,8 +1,6 @@
 // frontend/src/components/ProductCard.tsx
-import { TrendingDown, AlertCircle } from 'lucide-react';
-
+import { TrendingDown} from 'lucide-react';
 interface ProductCardProps {
-  url: string;
   productName: string;
   bestPrice: number;
   averagePrice: number;
@@ -13,7 +11,6 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ 
-  url, 
   productName, 
   bestPrice, 
   averagePrice, 

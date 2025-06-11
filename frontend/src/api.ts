@@ -3,7 +3,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'http://192.168.0.145:5000/api',
+  baseURL: 'https://pricewatch.gabeserver.online/api',
 });
 
 export const setUser = (username: string) => {

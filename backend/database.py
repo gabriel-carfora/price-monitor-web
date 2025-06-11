@@ -1,4 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, TypeDecorator, Text
+# Enhanced backend/database.py
+
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, TypeDecorator, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 import os
@@ -38,7 +40,7 @@ class User(Base):
 
     username = Column(String, primary_key=True, index=True)
     pushover_code = Column(String, nullable=True)
-    price_limit = Column(Float, nullable=True)
+    price_limit = Column(Float, nullable=True)  # Now percentage (0-100)
     notification_frequency_days = Column(Integer, default=1)
     retailer_exclusions = Column(JSONType, default=list)
 
@@ -74,6 +76,25 @@ class ProductDetails(Base):
     image_url = Column(String, nullable=True)
     retailers = Column(JSONType, default=list)
     price_history = Column(JSONType, default=list)
+    # New fields for tracking notifications
+    last_notification_sent = Column(DateTime, nullable=True)
+    last_discount_percent = Column(Float, default=0)  # Track previous best discount
+
+class NotificationLog(Base):
+    """Track all notifications sent to users"""
+    __tablename__ = 'notification_logs'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, index=True)
+    product_url = Column(String, index=True)
+    notification_type = Column(String)  # 'price_drop', 'deal_alert', etc.
+    discount_percent = Column(Float)
+    price = Column(Float)
+    average_price = Column(Float)
+    retailer = Column(String)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+    success = Column(Boolean, default=True)
+    message = Column(Text)
 
 # Create tables
 Base.metadata.create_all(bind=engine)

@@ -178,7 +178,7 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
 
             async def handle_response(response):
                 # Only intercept the main product API, not suggestions
-                if ("/api/product/" in response.url and 
+                if ("/api/produhttps://buywisely.com.au/product/viva-paper-towel-white-pack-of-12-12-rolls-60-sheets-per-roll-ct/" in response.url and 
                     "/suggestions/" not in response.url and 
                     "/search/" not in response.url and
                     response.status == 200):

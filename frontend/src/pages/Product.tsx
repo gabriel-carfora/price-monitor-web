@@ -120,10 +120,10 @@ export default function Product() {
     const sortedRetailers = [...retailers].sort((a, b) => a.price - b.price);
     
     // Get best 10 (lowest prices)
-    const best = sortedRetailers.slice(0, 3);
+    const best = sortedRetailers.slice(0, 10);
     
     // Get worst 10 (highest prices) - reverse order for display
-    const worst = sortedRetailers.slice(-3).reverse();
+    const worst = sortedRetailers.slice(-10).reverse();
     
     return { best, worst };
   };
@@ -159,16 +159,18 @@ export default function Product() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto px-2 sm:px-4">
         {/* Header */}
         <div className="flex items-center mb-4">
           <button
             onClick={() => navigate('/dashboard')}
-            className="p-2 hover:bg-gray-100 rounded-full mr-2"
+            className="p-2 hover:bg-gray-100 rounded-full mr-2 flex-shrink-0"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-xl font-bold flex-1">{product.product_name}</h1>
+          <h1 className="text-lg sm:text-xl font-bold flex-1 min-w-0">
+            {product.product_name}
+          </h1>
         </div>
 
         {/* Product Image */}
@@ -177,14 +179,38 @@ export default function Product() {
             <img
               src={product.image_url}
               alt={product.product_name}
-              className="w-full max-w-sm mx-auto h-64 object-contain"
+              className="w-full max-w-sm mx-auto h-48 sm:h-64 object-contain"
             />
           </div>
         )}
 
-        {/* Price Summary */}
+        {/* Price Summary - Mobile Optimized */}
         <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-          <div className="flex justify-between items-start mb-3">
+          {/* Mobile Layout - Stacked */}
+          <div className="block sm:hidden">
+            <div className="text-center mb-4">
+              <div className="text-3xl font-bold text-green-600 mb-1">
+                ${product.best_price.toFixed(2)}
+              </div>
+              <div className="text-sm text-gray-500">
+                Best price at {product.retailer}
+              </div>
+            </div>
+            
+            <div className="text-center mb-4">
+              <div className="text-sm text-gray-500 mb-1">Average price</div>
+              <div className="text-xl font-medium">${product.average_price.toFixed(2)}</div>
+              {savings > 0 && (
+                <div className="text-sm text-green-600 flex items-center justify-center mt-1">
+                  <TrendingDown className="w-3 h-3 mr-1" />
+                  Save ${savings.toFixed(2)} ({percentage}%)
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Desktop Layout - Side by Side */}
+          <div className="hidden sm:flex justify-between items-start mb-3">
             <div>
               <div className="text-2xl font-bold text-green-600">
                 ${product.best_price.toFixed(2)}
@@ -206,7 +232,7 @@ export default function Product() {
           </div>
           
           {/* Summary stats */}
-          <div className="text-sm text-gray-500 text-center">
+          <div className="text-sm text-gray-500 text-center border-t pt-3">
             Found prices from {product.all_retailers.length} retailers
           </div>
         </div>
@@ -222,20 +248,23 @@ export default function Product() {
               {best.map((retailer, index) => (
                 <div
                   key={`best-${retailer.name}-${index}`}
-                  className={`flex justify-between items-center p-3 rounded ${
+                  className={`flex items-center p-3 rounded ${
                     index === 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
                   }`}
                 >
-                  <div className="flex-1">
-                    <div className="font-medium">{retailer.name}</div>
-                    <div className="text-sm text-gray-500">
+                  {/* Mobile Layout */}
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="font-medium truncate">{retailer.name}</div>
+                    <div className="text-xs text-gray-500 truncate">
                       {retailer.url}
                       {retailer.price_count && (
-                        <span className="ml-2">({retailer.price_count} price points)</span>
+                        <span className="block sm:inline sm:ml-2">({retailer.price_count} price points)</span>
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
+                  
+                  {/* Price Section */}
+                  <div className="text-right flex-shrink-0 mr-3">
                     <div className={`font-semibold ${index === 0 ? 'text-green-600' : ''}`}>
                       ${retailer.price.toFixed(2)}
                     </div>
@@ -248,11 +277,13 @@ export default function Product() {
                       <div className="text-xs text-green-600">Best Deal!</div>
                     )}
                   </div>
+                  
+                  {/* External Link */}
                   <a
                     href={retailer.url.startsWith('http') ? retailer.url : `https://${retailer.url}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="ml-3 p-2 hover:bg-gray-200 rounded"
+                    className="p-2 hover:bg-gray-200 rounded flex-shrink-0"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <ExternalLink className="w-4 h-4 text-gray-600" />
@@ -274,18 +305,21 @@ export default function Product() {
               {worst.map((retailer, index) => (
                 <div
                   key={`worst-${retailer.name}-${index}`}
-                  className="flex justify-between items-center p-3 rounded bg-red-50 border border-red-100"
+                  className="flex items-center p-3 rounded bg-red-50 border border-red-100"
                 >
-                  <div className="flex-1">
-                    <div className="font-medium">{retailer.name}</div>
-                    <div className="text-sm text-gray-500">
+                  {/* Mobile Layout */}
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="font-medium truncate">{retailer.name}</div>
+                    <div className="text-xs text-gray-500 truncate">
                       {retailer.url}
                       {retailer.price_count && (
-                        <span className="ml-2">({retailer.price_count} price points)</span>
+                        <span className="block sm:inline sm:ml-2">({retailer.price_count} price points)</span>
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
+                  
+                  {/* Price Section */}
+                  <div className="text-right flex-shrink-0 mr-3">
                     <div className="font-semibold text-red-600">
                       ${retailer.price.toFixed(2)}
                     </div>
@@ -293,11 +327,13 @@ export default function Product() {
                       +${(retailer.price - product.best_price).toFixed(2)} vs best
                     </div>
                   </div>
+                  
+                  {/* External Link */}
                   <a
                     href={retailer.url.startsWith('http') ? retailer.url : `https://${retailer.url}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="ml-3 p-2 hover:bg-red-200 rounded"
+                    className="p-2 hover:bg-red-200 rounded flex-shrink-0"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <ExternalLink className="w-4 h-4 text-gray-600" />
@@ -311,7 +347,7 @@ export default function Product() {
         {/* All Retailers Summary */}
         {product.all_retailers.length > 20 && (
           <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-            <h3 className="font-semibold mb-2">Price Range Summary</h3>
+            <h3 className="font-semibold mb-3">Price Range Summary</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <div className="text-gray-500">Lowest Price</div>
@@ -346,7 +382,7 @@ export default function Product() {
         </div>
 
         {/* Original URL */}
-        <div className="text-center mt-2">
+        <div className="text-center mt-2 mb-6">
           <a
             href={product.url}
             target="_blank"

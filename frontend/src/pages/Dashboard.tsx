@@ -200,7 +200,6 @@ export default function Dashboard() {
               return (
                 <ProductCard
                   key={url}
-                  url={url}
                   productName={info?.product_name || 'Loading...'}
                   bestPrice={info?.best_price || 0}
                   averagePrice={info?.average_price || 0}
