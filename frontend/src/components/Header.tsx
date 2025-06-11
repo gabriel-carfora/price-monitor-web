@@ -12,15 +12,17 @@ export default function Header() {
       </button>
 
       {/* App Title */}
-      <h1 className="text-lg font-semibold text-gray-800 text-center flex-1 sm:text-left">
-        PriceWatcher
+      <button onClick={() => navigate('/')}
+>      <h1 className="text-lg font-semibold text-gray-800 text-center flex-1 sm:text-left">
+        💸 PriceWatcher
       </h1>
+      </button>
 
       {/* Desktop nav links */}
-<nav className="hidden sm:flex space-x-4">
-  <button className="block px-2 py-1">Dashboard</button>
-  <button className="block px-2 py-1">Settings</button>
-</nav>
+    <nav className="hidden sm:flex space-x-4">
+    <button className="block px-2 py-1" onClick={() => navigate('/dashboard')}>Dashboard</button>
+    <button className="block px-2 py-1" onClick={() => navigate('/settings')}>Settings</button>
+    </nav>
 
     </header>
   );

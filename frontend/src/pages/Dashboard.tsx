@@ -3,15 +3,16 @@ import API from '../api';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import ProductCard from '../components/ProductCard';
-import ProductCardSkeleton from '../components/ProductCardSkeleton';
 import { cache, cacheKeys } from '../utils/cache';
+import { Loader2 } from 'lucide-react';
 
 interface ProductInfo {
   url: string;
-  retailer: string;
-  best_price: number;
-  average_price: number;
-  product_name: string;
+  retailer?: string;
+  best_price?: number;
+  average_price?: number;
+  product_name?: string;
+  image_url?: string;
 }
 
 export default function Dashboard() {
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [productInfo, setProductInfo] = useState<Record<string, ProductInfo>>({});
   const [newUrl, setNewUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [addingProduct, setAddingProduct] = useState(false);
   const navigate = useNavigate();
 
   const username = localStorage.getItem('username');
@@ -56,6 +58,7 @@ export default function Dashboard() {
 
   const fetchProductInfo = async (urls: string[]) => {
     try {
+      setLoading(true);
       // Check cache first
       const cacheKey = cacheKeys.productInfo(urls);
       const cachedData = cache.get<ProductInfo[]>(cacheKey);
@@ -69,9 +72,8 @@ export default function Dashboard() {
         return; // Use cached data
       }
 
-      // If not cached, fetch from API
-      setLoading(true);
-      const response = await API.post('/product-info', { urls });
+      // If not cached, fetch from new endpoint
+      const response = await API.post('/product-details', { urls });
       const infoMap: Record<string, ProductInfo> = {};
       response.data.forEach((info: ProductInfo) => {
         infoMap[info.url] = info;
@@ -90,21 +92,36 @@ export default function Dashboard() {
   const addUrl = async () => {
     if (!newUrl) return;
     
-    // Add to watchlist
-    await API.post(`/watchlist/${username}`, { url: newUrl });
-    const updatedWatchlist = [...watchlist, newUrl];
-    setWatchlist(updatedWatchlist);
-    
-    // Update cache
-    cache.set(cacheKeys.watchlist(username!), updatedWatchlist, 10 * 60 * 1000);
-    
-    // Clear the product info cache to force refresh with new item
-    cache.clear();
-    
-    // Fetch info for all URLs including the new one
-    fetchProductInfo(updatedWatchlist);
-    
-    setNewUrl('');
+    try {
+      setAddingProduct(true);
+      
+      // Add to watchlist
+      await API.post(`/watchlist/${username}`, { url: newUrl });
+      const updatedWatchlist = [...watchlist, newUrl];
+      setWatchlist(updatedWatchlist);
+      
+      // Update cache
+      cache.set(cacheKeys.watchlist(username!), updatedWatchlist, 10 * 60 * 1000);
+      
+      // Trigger price aggregation in the background
+      await API.post('/api/aggregate-prices');
+      
+      // Fetch updated product details
+      const newProductInfo = await API.post('/product-details', { urls: [newUrl] });
+      
+      // Update product info state
+      setProductInfo(prev => ({
+        ...prev,
+        [newUrl]: newProductInfo.data[0]
+      }));
+      
+      // Clear the input
+      setNewUrl('');
+    } catch (error) {
+      console.error('Failed to add product:', error);
+    } finally {
+      setAddingProduct(false);
+    }
   };
 
   const deleteUrl = async (url: string) => {
@@ -126,6 +143,22 @@ export default function Dashboard() {
     navigate(`/product/${encodedUrl}`);
   };
 
+  const triggerAggregation = async () => {
+    try {
+      setLoading(true);
+      await API.post('/aggregate-prices');
+      
+      // Refresh product info after aggregation
+      if (watchlist.length > 0) {
+        await fetchProductInfo(watchlist);
+      }
+    } catch (error) {
+      console.error('Failed to refresh prices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Layout>
       <h1 className="text-xl font-bold mb-4 text-center">Your Watchlist</h1>
@@ -136,66 +169,63 @@ export default function Dashboard() {
             <p className="text-sm text-gray-500 text-center">No items yet.</p>
           ) : (
             watchlist.map((url) => {
-              const info = productInfo[url];
+              const info = productInfo[url] || { url };
               
-              if (info) {
-                return (
-                  <ProductCard
-                    key={url}
-                    url={url}
-                    productName={info.product_name}
-                    bestPrice={info.best_price}
-                    averagePrice={info.average_price}
-                    retailer={info.retailer}
-                    onClick={() => navigateToProduct(url)}
-                    onRemove={() => deleteUrl(url)}
-                    loading={loading && !info}
-                  />
-                );
-              } else {
-                return (
-                  <ProductCardSkeleton
-                    key={url}
-                    url={url}
-                    onClick={() => navigateToProduct(url)}
-                    onRemove={() => deleteUrl(url)}
-                  />
-                );
-              }
+              return (
+                <ProductCard
+                  key={url}
+                  url={url}
+                  productName={info.product_name || 'Loading...'}
+                  bestPrice={info.best_price || 0}
+                  averagePrice={info.average_price || 0}
+                  retailer={info.retailer || 'Unknown'}
+                  onClick={() => navigateToProduct(url)}
+                  onRemove={() => deleteUrl(url)}
+                  loading={loading && !info.best_price}
+                />
+              );
             })
           )}
         </ul>
 
-        <input
-          type="text"
-          placeholder="Add BuyWisely URL"
-          value={newUrl}
-          onChange={(e) => setNewUrl(e.target.value)}
-          onKeyPress={(e) => {
-            if (e.key === 'Enter') {
-              addUrl();
-            }
-          }}
-          className="border border-gray-300 p-2 w-full rounded"
-        />
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Add BuyWisely URL"
+            value={newUrl}
+            onChange={(e) => setNewUrl(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                addUrl();
+              }
+            }}
+            className="border border-gray-300 p-2 w-full rounded pr-10"
+          />
+          {addingProduct && (
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+              <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
+            </div>
+          )}
+        </div>
+        
         <button
           onClick={addUrl}
-          className="bg-blue-600 text-white w-full py-2 rounded hover:bg-blue-700"
+          disabled={addingProduct}
+          className={`bg-blue-600 text-white w-full py-2 rounded ${
+            addingProduct ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'
+          }`}
         >
-          Add
+          {addingProduct ? 'Adding...' : 'Add'}
         </button>
 
         <button
-          onClick={() => {
-            cache.clear();
-            // Refetch all data
-            if (watchlist.length > 0) {
-              fetchProductInfo(watchlist);
-            }
-          }}
-          className="text-sm text-gray-500 mt-2 underline block w-full text-center"
+          onClick={triggerAggregation}
+          disabled={loading}
+          className={`text-sm text-gray-500 mt-2 underline block w-full text-center ${
+            loading ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
         >
-          Refresh Prices
+          {loading ? 'Refreshing...' : 'Refresh Prices'}
         </button>
         <button
           onClick={() => navigate('/settings')}

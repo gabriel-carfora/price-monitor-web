@@ -22,10 +22,9 @@ export default function ProductCard({
   onRemove,
   loading = false 
 }: ProductCardProps) {
-  // Calculate savings
   const savings = averagePrice - bestPrice;
   const savingsPercentage = averagePrice > 0 ? ((savings / averagePrice) * 100).toFixed(0) : 0;
-  const hasSavings = savings > 0.01; // More than 1 cent
+  const hasSavings = savings > 0.01;
 
   if (loading) {
     return (

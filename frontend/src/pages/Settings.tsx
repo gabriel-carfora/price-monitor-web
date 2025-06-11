@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import API from '../api';
 import type { UserSettings } from '../types';
 import { useNavigate } from 'react-router-dom';
+import Layout from '../components/Layout';
 
 export default function Settings() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -60,6 +61,7 @@ export default function Settings() {
   if (!settings) return <div className="p-4">Loading...</div>;
 
   return (
+    <Layout>
     <div className="p-4 max-w-sm mx-auto">
       <h1 className="text-xl font-bold mb-4">Settings</h1>
 
@@ -123,5 +125,6 @@ export default function Settings() {
         Back to Dashboard
       </button>
     </div>
+    </Layout>
   );
 }
