@@ -145,9 +145,10 @@ def manage_watchlist(username):
     finally:
         db.close()
 
+
 @app.route("/api/product-details", methods=["POST"])
 def get_product_details():
-    """Retrieve product details with proper price analysis"""
+    """Retrieve product details with proper price analysis and images"""
     urls = request.json.get("urls", [])
     username = request.headers.get('X-User', 'default')
     
@@ -179,15 +180,18 @@ def get_product_details():
             
             if product and is_recent:
                 # Use cached data
+                retailers_data = product.retailers if product.retailers else []
+                
                 product_details.append({
                     "url": product.url,
                     "product_name": product.product_name,
                     "best_price": product.best_price,
                     "average_price": product.average_price,
                     "retailer": product.best_retailer,
-                    "image_url": product.image_url,
+                    "image_url": product.image_url,  # Include cached image
                     "savings": round(product.average_price - product.best_price, 2) if product.average_price and product.best_price else 0,
-                    "last_updated": last_updated.isoformat() if last_updated else None
+                    "last_updated": last_updated.isoformat() if last_updated else None,
+                    "all_retailers": retailers_data
                 })
             else:
                 # Scrape fresh data
@@ -212,15 +216,20 @@ def get_product_details():
                         # Extract product name from URL
                         product_name = url.split("/")[-1].replace("-", " ").title()
                         
+                        # Get all retailers data and image URL
+                        all_retailers = scraped_data.get("all_retailers", [])
+                        image_url = scraped_data.get("image_url")  # Extract image URL
+                        
                         product_info = {
                             "url": url,
                             "product_name": product_name,
                             "best_price": scraped_data["price"],
                             "average_price": scraped_data.get("average_price", scraped_data["price"]),
                             "retailer": scraped_data.get("retailer_name", "Unknown"),
-                            "image_url": None,
+                            "image_url": image_url,  # Include scraped image
                             "savings": scraped_data.get("savings", 0),
-                            "last_updated": scraped_data.get("timestamp")
+                            "last_updated": scraped_data.get("timestamp"),
+                            "all_retailers": all_retailers
                         }
                         
                         product_details.append(product_info)
@@ -233,6 +242,8 @@ def get_product_details():
                                 product.best_price = scraped_data["price"]
                                 product.average_price = scraped_data.get("average_price", scraped_data["price"])
                                 product.best_retailer = scraped_data.get("retailer_name", "Unknown")
+                                product.image_url = image_url  # Store image URL
+                                product.retailers = all_retailers
                                 product.last_updated = datetime.now(timezone.utc)
                             else:
                                 # Create new
@@ -242,15 +253,19 @@ def get_product_details():
                                     best_price=scraped_data["price"],
                                     average_price=scraped_data.get("average_price", scraped_data["price"]),
                                     best_retailer=scraped_data.get("retailer_name", "Unknown"),
-                                    image_url=None,
-                                    retailers=[],
+                                    image_url=image_url,  # Store image URL
+                                    retailers=all_retailers,
                                     price_history=[],
                                     last_updated=datetime.now(timezone.utc)
                                 )
                                 db.add(new_product)
                             
                             db.commit()
-                            print(f"Saved product data: {product_name} - ${scraped_data['price']:.2f}")
+                            
+                            # Log what we saved
+                            image_status = "with image" if image_url else "without image"
+                            print(f"Saved product data: {product_name} - ${scraped_data['price']:.2f} "
+                                  f"with {len(all_retailers)} retailers {image_status}")
                             
                         except Exception as e:
                             print(f"Failed to save to database: {e}")
@@ -266,7 +281,8 @@ def get_product_details():
                             "retailer": "Unknown",
                             "image_url": None,
                             "savings": 0,
-                            "last_updated": None
+                            "last_updated": None,
+                            "all_retailers": []
                         })
                         
                 except Exception as e:
@@ -280,7 +296,8 @@ def get_product_details():
                         "retailer": "Error",
                         "image_url": None,
                         "savings": 0,
-                        "last_updated": None
+                        "last_updated": None,
+                        "all_retailers": []
                     })
         
         return jsonify(product_details)

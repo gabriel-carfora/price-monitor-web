@@ -8,9 +8,6 @@ import statistics
 def parse_price_data(data):
     """
     Parse price data from BuyWisely API response
-    
-    Expected format: Dictionary with retailer URLs as keys, arrays of price entries as values
-    Alternative format: List of retailer objects
     """
     try:
         if isinstance(data, dict):
@@ -81,6 +78,81 @@ def extract_retailer_name(url):
     except:
         return url
 
+async def extract_product_image(page):
+    """Extract product image from the BuyWisely page"""
+    try:
+        print("Attempting to extract product image...")
+        
+        # Common selectors for product images on BuyWisely
+        image_selectors = [
+            'img[alt*="product"]',  # Images with "product" in alt text
+            'img[src*="product"]',  # Images with "product" in src
+            'img[class*="product"]',  # Images with "product" in class
+            '.product-image img',  # Product image containers
+            '.product-img img',
+            '[data-testid="product-image"] img',
+            '.main-image img',
+            '.hero-image img',
+            # BuyWisely specific selectors (you may need to inspect their HTML)
+            'img[src*="buywisely"]',
+            'img[src*="cdn"]',
+            # Generic fallbacks
+            'main img:first-of-type',
+            'article img:first-of-type',
+            '.container img:first-of-type'
+        ]
+        
+        for selector in image_selectors:
+            try:
+                # Wait for potential image to load
+                await page.wait_for_selector(selector, timeout=2000)
+                
+                # Get the image element
+                image_element = await page.query_selector(selector)
+                if image_element:
+                    # Get the src attribute
+                    src = await image_element.get_attribute('src')
+                    if src:
+                        # Check if it's a valid image URL (not a placeholder or icon)
+                        if (src.startswith('http') and 
+                            any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']) and
+                            'placeholder' not in src.lower() and
+                            'icon' not in src.lower() and
+                            'logo' not in src.lower()):
+                            
+                            print(f"Found product image: {src}")
+                            return src
+                            
+            except Exception as e:
+                # Continue to next selector if this one fails
+                continue
+        
+        # If no specific selectors work, try to find any reasonable product image
+        try:
+            # Get all images on the page
+            all_images = await page.query_selector_all('img')
+            
+            for img in all_images:
+                src = await img.get_attribute('src')
+                alt = await img.get_attribute('alt') or ''
+                
+                if (src and src.startswith('http') and
+                    any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']) and
+                    'product' in alt.lower() or 'item' in alt.lower()):
+                    
+                    print(f"Found product image via alt text: {src}")
+                    return src
+                    
+        except Exception as e:
+            print(f"Error in fallback image search: {e}")
+        
+        print("No product image found")
+        return None
+        
+    except Exception as e:
+        print(f"Error extracting product image: {e}")
+        return None
+
 async def scrape_product_async(url, excluded_retailers=None, days_back=30):
     """
     Scrape product from BuyWisely page and intercept API calls
@@ -89,6 +161,9 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
         url: BuyWisely product URL
         excluded_retailers: List of retailer domains to exclude
         days_back: Number of days of historical data to consider
+    
+    Returns:
+        Dict with best price info, list of all retailers, and product image
     """
     if excluded_retailers is None:
         excluded_retailers = []
@@ -121,8 +196,11 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
             print(f"Loading page: {url}")
             await page.goto(url, wait_until='networkidle', timeout=30000)
             
-            # Wait longer for the main product API call
+            # Wait longer for the main product API call and page content
             await page.wait_for_timeout(10000)
+            
+            # Extract product image while we're on the page
+            product_image = await extract_product_image(page)
             
             # If no API responses yet, try scrolling or interacting with the page
             if not api_responses:
@@ -136,21 +214,9 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
                 print("No API responses intercepted")
                 return None
             
-            # Debug: log all intercepted responses
-            print(f"Intercepted {len(api_responses)} API responses")
-            for i, response in enumerate(api_responses):
-                print(f"Response {i}: type={type(response)}, keys={list(response.keys()) if isinstance(response, dict) else 'N/A'}")
-            
             # Use the most recent/complete API response
             raw_data = api_responses[-1]
             print(f"Using response: type={type(raw_data)}")
-            
-            if isinstance(raw_data, dict):
-                print(f"Dict keys: {list(raw_data.keys())}")
-                print(f"Processing API data with {len(raw_data)} entries")
-            elif isinstance(raw_data, list):
-                print(f"List length: {len(raw_data)}")
-                print(f"Processing API data with {len(raw_data)} entries")
             
             # Parse the price data
             data = parse_price_data(raw_data)
@@ -162,9 +228,8 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
             # Calculate date threshold
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
             
-            current_prices = []  # Recent prices (last 7 days)
-            historical_prices = []  # All prices within the period
-            retailer_current_prices = {}  # Best current price per retailer
+            all_retailers = []  # List of all retailers with current prices
+            historical_prices = []  # All prices for average calculation
             
             print(f"Analyzing prices from {len(data)} retailers...")
             
@@ -183,14 +248,9 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
                 
                 for i, entry in enumerate(entries):
                     try:
-                        # Debug: Print first few entries to understand structure
-                        if i < 2:
-                            print(f"Entry {i}: {entry}")
-                        
                         # Parse timestamp
                         timestamp_str = entry.get('created_at', entry.get('timestamp', ''))
                         if not timestamp_str:
-                            print(f"Entry {i}: No timestamp found, skipping")
                             continue
 
                         # Handle different timestamp formats
@@ -206,24 +266,15 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
                         
                         # Check age
                         age_days = (datetime.now(timezone.utc) - ts).days
-                        if i < 2:  # Debug first few entries
-                            print(f"Entry {i}: Date {ts}, Age: {age_days} days")
                         
                         # Only consider prices within our date range
                         if ts < cutoff_date:
-                            if i < 2:
-                                print(f"Entry {i}: Too old, skipping")
                             continue
                         
                         # Extract price
                         price = entry.get('base_price', entry.get('price', 0))
                         if price <= 0:
-                            if i < 2:
-                                print(f"Entry {i}: Invalid price {price}, skipping")
                             continue
-                        
-                        if i < 2:
-                            print(f"Entry {i}: Valid price ${price}, age {age_days} days")
                         
                         retailer_prices.append(price)
                         historical_prices.append(price)
@@ -231,9 +282,6 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
                         # Consider prices from last 7 days as "current"
                         if ts >= datetime.now(timezone.utc) - timedelta(days=7):
                             recent_prices.append(price)
-                            current_prices.append(price)
-                            if i < 2:
-                                print(f"Entry {i}: Added as current price")
                     
                     except Exception as e:
                         print(f"Error processing entry {i}: {e}")
@@ -241,98 +289,54 @@ async def scrape_product_async(url, excluded_retailers=None, days_back=30):
                 
                 print(f"{retailer_name}: {len(retailer_prices)} total prices, {len(recent_prices)} recent prices")
                 
-                # Store best current price for this retailer
+                # Store retailer info if we have recent prices
                 if recent_prices:
-                    retailer_current_prices[retailer_name] = {
-                        'price': min(recent_prices),
+                    current_price = min(recent_prices)
+                    avg_price = sum(retailer_prices) / len(retailer_prices) if retailer_prices else current_price
+                    
+                    all_retailers.append({
+                        'name': retailer_name,
+                        'price': current_price,
                         'url': retailer_url,
-                        'avg_price': sum(retailer_prices) / len(retailer_prices) if retailer_prices else 0
-                    }
-                    print(f"{retailer_name}: Best current price ${min(recent_prices):.2f}")
-                else:
-                    print(f"{retailer_name}: No recent prices found")
+                        'avg_price': avg_price,
+                        'price_count': len(retailer_prices)
+                    })
+                    print(f"{retailer_name}: Current price ${current_price:.2f}")
             
-            if not historical_prices:
-                print("No valid historical prices found")
+            if not historical_prices or not all_retailers:
+                print("No valid retailers or historical prices found")
                 return None
+            
+            # Sort retailers by price (best to worst)
+            all_retailers.sort(key=lambda x: x['price'])
+            
+            # Calculate overall statistics
+            avg_price = statistics.mean(historical_prices)
+            best_retailer = all_retailers[0]
             
             print(f"\nSummary: {len(historical_prices)} total historical prices")
-            print(f"Current prices (last 7 days): {len(current_prices)}")
-            
-            # If no current prices, use most recent prices from each retailer
-            if not retailer_current_prices and historical_prices:
-                print("No recent prices found, using most recent available prices...")
-                
-                for retailer_url, entries in data.items():
-                    retailer_name = extract_retailer_name(retailer_url)
-                    
-                    # Skip excluded retailers
-                    if any(excluded in retailer_url.lower() for excluded in excluded_retailers):
-                        continue
-                    
-                    most_recent_price = None
-                    most_recent_date = None
-                    
-                    for entry in entries:
-                        try:
-                            timestamp_str = entry.get('created_at', entry.get('timestamp', ''))
-                            if not timestamp_str:
-                                continue
-                            
-                            if '.' in timestamp_str:
-                                ts = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%fZ")
-                            else:
-                                ts = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
-                            ts = ts.replace(tzinfo=timezone.utc)
-                            
-                            if ts < cutoff_date:
-                                continue
-                                
-                            price = entry.get('base_price', entry.get('price', 0))
-                            if price <= 0:
-                                continue
-                            
-                            if most_recent_date is None or ts > most_recent_date:
-                                most_recent_date = ts
-                                most_recent_price = price
-                                
-                        except Exception:
-                            continue
-                    
-                    if most_recent_price is not None:
-                        retailer_current_prices[retailer_name] = {
-                            'price': most_recent_price,
-                            'url': retailer_url,
-                            'avg_price': most_recent_price
-                        }
-                        print(f"{retailer_name}: Most recent price ${most_recent_price:.2f} from {most_recent_date}")
-            
-            # Calculate statistics
-            avg_price = statistics.mean(historical_prices)
-            
-            # Find best current price
-            if not retailer_current_prices:
-                print("No current prices found")
-                return None
-            
-            best_retailer = min(retailer_current_prices.items(), 
-                              key=lambda x: x[1]['price'])
+            print(f"Found {len(all_retailers)} retailers with current prices")
+            if product_image:
+                print(f"Extracted product image: {product_image}")
             
             result = {
-                "price": best_retailer[1]['price'],
-                "retailer": best_retailer[1]['url'],
-                "retailer_name": best_retailer[0],
+                "price": best_retailer['price'],
+                "retailer": best_retailer['url'],
+                "retailer_name": best_retailer['name'],
                 "average_price": round(avg_price, 2),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "total_prices_analyzed": len(historical_prices),
-                "retailers_analyzed": len(retailer_current_prices),
-                "savings": round(avg_price - best_retailer[1]['price'], 2),
-                "savings_percentage": round(((avg_price - best_retailer[1]['price']) / avg_price) * 100, 1) if avg_price > 0 else 0
+                "retailers_analyzed": len(all_retailers),
+                "savings": round(avg_price - best_retailer['price'], 2),
+                "savings_percentage": round(((avg_price - best_retailer['price']) / avg_price) * 100, 1) if avg_price > 0 else 0,
+                # New: Include all retailers data and product image
+                "all_retailers": all_retailers,
+                "image_url": product_image  # Add the extracted image URL
             }
             
             print(f"Analysis complete: Best price ${result['price']:.2f} at {result['retailer_name']}, "
                   f"Average ${result['average_price']:.2f}, "
-                  f"Savings: ${result['savings']:.2f} ({result['savings_percentage']}%)")
+                  f"Found {len(all_retailers)} retailers")
             
             return result
             

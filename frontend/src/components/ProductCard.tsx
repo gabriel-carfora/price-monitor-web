@@ -53,7 +53,7 @@ export default function ProductCard({
               {hasSavings && (
                 <div className="flex items-center text-green-600 text-xs">
                   <TrendingDown className="w-3 h-3 mr-1" />
-                  <span>{savingsPercentage}% off</span>
+                  <span>{savingsPercentage}% less than average</span>
                 </div>
               )}
             </div>
