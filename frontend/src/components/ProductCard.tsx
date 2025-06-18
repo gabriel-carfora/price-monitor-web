@@ -80,7 +80,7 @@ export default function ProductCard({
               e.stopPropagation();
               onRemove();
             }}
-            className="text-red-600 hover:underline text-xs ml-2 px-2 py-1"
+            className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded"
           >
             Remove
           </button>
