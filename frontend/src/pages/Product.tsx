@@ -31,6 +31,7 @@ export default function Product() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fetchedImageUrl, setFetchedImageUrl] = useState<string | null>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   useEffect(() => {
     if (!productUrl) return;
@@ -50,7 +51,7 @@ export default function Product() {
 }
     fetchProductDetails();
   }, [productUrl]);
-
+  
   const fetchProductDetails = async () => {
     try {
       setLoading(true);
@@ -189,13 +190,32 @@ export default function Product() {
 
         {/* Product Image */}
 {fetchedImageUrl && (
-  <div className="flex justify-center mb-6">
+<div className="flex justify-center items-center mb-6 min-h-[200px] relative">
+  {/* Dummy placeholder (shimmer or placeholder image) */}
+  {!imageLoaded && (
+    <div className="absolute w-full h-full max-w-xs flex justify-center items-center">
+      <img
+        src="https://via.placeholder.com/300x200?text=Loading"
+        alt="Loading placeholder"
+        className="rounded-lg shadow-md max-w-xs w-full h-auto object-contain"
+      />
+    </div>
+  )}
+
+  {/* Actual image */}
+  {fetchedImageUrl && (
     <img
       src={fetchedImageUrl}
       alt={product.product_name}
-      className="rounded-lg shadow-md max-w-xs w-full h-auto object-contain"
+      onLoad={() => setImageLoaded(true)}
+      onError={() => setImageLoaded(true)} // Treat failure as "loaded" to hide placeholder
+      className={`rounded-lg shadow-md max-w-xs w-full h-auto object-contain transition-opacity duration-300 ${
+        imageLoaded ? 'opacity-100' : 'opacity-0'
+      }`}
     />
-  </div>
+  )}
+</div>
+
 )}
 
 

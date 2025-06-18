@@ -26,8 +26,9 @@ export default function ProductCard({
   loading = false,
 }: ProductCardProps) {
   const [fetchedImageUrl, setFetchedImageUrl] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(true); // <-- NEW
 
-  useEffect(() => {
+useEffect(() => {
     const fetchImage = async () => {
       if (imageUrl || !slug) return;
 
@@ -67,19 +68,30 @@ export default function ProductCard({
       className="bg-white rounded shadow-sm px-4 py-3 text-sm hover:shadow-md transition-shadow cursor-pointer"
       onClick={onClick}
     >
-<div className="flex space-x-4 items-start">
-  {finalImage && (
-    <img
-      src={finalImage}
-      alt={productName}
-      className="w-20 h-20 rounded object-cover flex-shrink-0"
-      loading="lazy"
-    />
-  )}
+      <div className="flex space-x-4 items-center">
+
+        <div className="w-20 h-20 rounded flex items-center justify-center bg-gray-100 relative overflow-hidden">
+          {finalImage && (
+            <img
+              src={finalImage}
+              alt={productName}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${
+                imageLoading ? 'opacity-0' : 'opacity-100'
+              }`}
+              loading="lazy"
+              onLoad={() => setImageLoading(false)}
+              onError={() => setImageLoading(false)}
+            />
+          )}
+          {imageLoading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+            </div>
+          )}
+        </div>
 
   <div className="flex-1">
-    <div className="font-semibold text-base mb-1">{productName}</div>
-
+    <div className="font-semibold text-base mb-0.5">{productName}</div>
     <div className="flex items-center space-x-2">
       <div className="text-green-600 font-semibold text-lg">
         ${bestPrice.toFixed(2)}
@@ -87,26 +99,26 @@ export default function ProductCard({
       {hasSavings && (
         <div className="flex items-center text-green-600 text-xs">
           <TrendingDown className="w-3 h-3 mr-1" />
-          <span>{savingsPercentage}% less than average</span>
+          <span>{savingsPercentage}% average</span>
         </div>
       )}
     </div>
 
-    <div className="flex items-center space-x-2 mt-1">
-      <span className="text-gray-500 text-xs">Avg:</span>
-      <span
-        className={`text-xs ${
-          hasSavings ? 'line-through text-gray-400' : 'text-gray-600'
-        }`}
-      >
-        ${averagePrice.toFixed(2)}
-      </span>
-      {hasSavings && (
-        <span className="text-xs text-green-600">
-          Save ${savings.toFixed(2)}
-        </span>
-      )}
-    </div>
+<div className="flex items-center space-x-2">
+  <span className="text-gray-600 text-xs w-16">Avg Price:</span>
+  <span className="text-xs text-yellow-600">
+    ${averagePrice.toFixed(2)}
+  </span>
+</div>
+
+{hasSavings && (
+  <div className="flex items-center space-x-2">
+    <span className="text-gray-600 text-xs w-16">Saving:</span>
+    <span className="text-xs text-green-600">
+      ${savings.toFixed(2)}
+    </span>
+  </div>
+)}
 
     <div className="text-gray-500 text-xs mt-1">Best at {retailer}</div>
   </div>

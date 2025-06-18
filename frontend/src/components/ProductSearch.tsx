@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Search, Plus, Loader2, ExternalLink } from 'lucide-react';
 import API from '../api';
+import { useEffect } from 'react';
 
 interface SearchResult {
   title: string;
@@ -29,21 +30,44 @@ export default function ProductSearch({ onAddProduct, isAddingProduct = false }:
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
+  const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
+  const [watchlist, setWatchlist] = useState<string[]>([]);
 
-  const fetchThumbnail = async (slug: string) => {
-  if (imageMap[slug]) return; // Already loaded
+  useEffect(() => {
+  const fetchWatchlist = async () => {
+    const username = localStorage.getItem('username');
+    if (!username) return;
+
+    try {
+      const res = await API.get(`/watchlist/${username}`);
+      setWatchlist(res.data);
+    } catch (err) {
+      console.error("Failed to fetch watchlist", err);
+    }
+  };
+
+  fetchWatchlist();
+}, []);
+
+const fetchThumbnail = async (slug: string) => {
+  if (imageMap[slug]) return;
+
+  setLoadingImages((prev) => ({ ...prev, [slug]: true }));
 
   try {
     const res = await API.post('/product-image', {
       slug,
       size: 'thumb'
     });
+
     const imageUrl = res.data.image_url;
     if (imageUrl) {
       setImageMap(prev => ({ ...prev, [slug]: imageUrl }));
     }
   } catch (err) {
     console.warn(`No image for ${slug}`);
+  } finally {
+    setLoadingImages((prev) => ({ ...prev, [slug]: false }));
   }
 };
   const handleSearch = async () => {
@@ -86,9 +110,10 @@ export default function ProductSearch({ onAddProduct, isAddingProduct = false }:
     }
   };
 
-  const handleAddProduct = (url: string) => {
-    onAddProduct(url);
-  };
+const handleAddProduct = async (url: string) => {
+  await onAddProduct(url);
+  setWatchlist(prev => [...prev, url]);
+};
 
   const extractProductName = (title: string, offersText: string): string => {
     // Clean up the title if it's just a slug
@@ -119,15 +144,15 @@ export default function ProductSearch({ onAddProduct, isAddingProduct = false }:
           />
           {searching && (
             <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
-              <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
+              
             </div>
           )}
         </div>
         <button
           onClick={handleSearch}
-          disabled={searching || !query.trim() || query.length < 2}
+          disabled={searching || !query.trim()}
           className={`px-4 py-2 rounded text-white flex items-center space-x-2 ${
-            searching || !query.trim() || query.length < 2
+            searching || !query.trim() || query.length < 1
               ? 'bg-gray-400 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-700'
           }`}
@@ -158,55 +183,57 @@ export default function ProductSearch({ onAddProduct, isAddingProduct = false }:
                 Found {results.length} products for "{query}"
               </div>
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {results.map((product, index) => (
-                  <div
-                    key={`${product.slug}-${index}`}
-                    className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between">
-                        <img
-                            src={imageMap[product.slug]}
-                            alt={product.title}
-                            className="w-12 h-12 object-contain rounded border mr-3"
-                            loading="lazy"
-                        />
-                        <div className="flex-1 min-w-0 mr-3">
-                            <div className="font-medium text-gray-900 mb-1">
-                            {extractProductName(product.title, product.offers_count)}
-                            </div>
-                            <div className="text-sm text-gray-500 mb-2">
-                            {product.offers_count}
-                            </div>
-                        </div>
-                      
-                      <div className="flex space-x-2 flex-shrink-0">
-                        <a
-                          href={product.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="View on BuyWisely"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                        
-                        <button
-                          onClick={() => handleAddProduct(product.url)}
-                          disabled={isAddingProduct}
-                          className={`px-3 py-1 rounded text-sm flex items-center space-x-1 ${
-                            isAddingProduct
-                              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                              : 'bg-green-600 text-white hover:bg-green-700'
-                          }`}
-                          title="Add to watchlist"
-                        >
-                          <Plus className="w-3 h-3" />
-                          <span>Add</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                {results.map((product, index) => {
+  const isInWatchlist = watchlist.includes(product.url); // 👈 You MUST include this line
+
+  return (
+    <div
+      key={`${product.slug}-${index}`}
+      className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors min-h-[96px]"
+    >
+      <div className="flex items-center justify-between">
+        <div className="w-12 h-12 flex items-center justify-center rounded border mr-3 bg-white">
+          {loadingImages[product.slug] || !imageMap[product.slug] ? (
+            <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+          ) : (
+            <img
+              src={imageMap[product.slug]}
+              alt={product.title}
+              className="w-12 h-12 object-contain rounded"
+              loading="lazy"
+            />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0 mr-3">
+          <div className="font-medium text-gray-900 mb-1">
+            {extractProductName(product.title, product.offers_count)}
+          </div>
+          <div className="text-sm text-gray-500 mb-2">
+            {product.offers_count}
+          </div>
+        </div>
+
+        <div className="flex space-x-2 flex-shrink-0">
+          <button
+            onClick={() => handleAddProduct(product.url)}
+            disabled={isAddingProduct || isInWatchlist}
+            className={`px-3 py-1 rounded text-sm flex items-center space-x-1 ${
+              isAddingProduct || isInWatchlist
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+            title={isInWatchlist ? "Already in watchlist" : "Add to watchlist"}
+          >
+            <Plus className="w-3 h-3" />
+            <span>{isInWatchlist ? 'Added' : 'Add'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+})}
+
               </div>
             </div>
           ) : (

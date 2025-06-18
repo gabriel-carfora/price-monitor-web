@@ -278,12 +278,6 @@ export default function Dashboard() {
           >
             {loading ? 'Refreshing...' : 'Refresh Prices'}
           </button>
-          <button
-            onClick={() => navigate('/settings')}
-            className="text-sm text-blue-700 mt-2 underline block w-full text-center"
-          >
-            Go to Settings
-          </button>
         </div>
       </div>
     </Layout>

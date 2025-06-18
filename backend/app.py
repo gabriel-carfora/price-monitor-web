@@ -19,6 +19,7 @@ from pushover import send_pushover
 from cache import cache
 from scheduler import price_scheduler
 from image_scraper import get_high_quality_image, get_thumbnail_image
+from flask import make_response
 
 # Initialize API client
 buywisely_api = BuyWiselyDirectAPI()
@@ -64,6 +65,7 @@ class DatabaseService:
         user.price_limit = user_data.get('price_limit', user.price_limit)
         user.retailer_exclusions = user_data.get('retailer_exclusions', user.retailer_exclusions)
         user.notification_frequency_days = user_data.get('notification_frequency_days', user.notification_frequency_days)
+        print(f"💾 Saving retailer exclusions for {username}: {user_data.get('retailer_exclusions')}")
         db.commit()
         return {"status": "updated"}
 
@@ -111,6 +113,7 @@ def user_settings(username):
 
         return jsonify(DatabaseService.update_user(db, username, data))
     finally:
+        
         db.close()
 
 @app.route("/api/refresh-prices", methods=["POST"])
@@ -147,6 +150,8 @@ def manage_watchlist(username):
 def get_product_details():
     urls = request.json.get("urls", [])
     username = request.headers.get('X-User', 'default')
+    print("THIS RIGHT HERE DAWG\n\n\n\n\n\n")
+    print(username)
     db = SessionLocal()
     product_details = []
     try:
@@ -160,18 +165,28 @@ def get_product_details():
                 age = datetime.now(timezone.utc) - (product.last_updated.replace(tzinfo=timezone.utc) if product.last_updated.tzinfo is None else product.last_updated)
                 fresh = age.total_seconds() < 3600
             if product and fresh:
+                filtered_retailers = [r for r in (product.retailers or []) if not any(ex.lower() in r.get('url', '').lower() for ex in excluded)]
+
+                best = min(filtered_retailers, key=lambda r: r['price']) if filtered_retailers else None
+                average_price = round(sum(r['price'] for r in filtered_retailers) / len(filtered_retailers), 2) if filtered_retailers else 0
+
                 product_details.append({
                     "url": product.url,
                     "product_name": product.product_name,
-                    "best_price": product.best_price,
-                    "average_price": product.average_price,
-                    "retailer": product.best_retailer,
+                    "best_price": best['price'] if best else 0,
+                    "average_price": average_price,
+                    "retailer": best['name'] if best else 'N/A',
                     "image_url": product.image_url,
-                    "savings": round(product.average_price - product.best_price, 2) if product.average_price and product.best_price else 0,
+                    "savings": round(average_price - best['price'], 2) if best else 0,
                     "last_updated": product.last_updated.isoformat() if product.last_updated else None,
-                    "all_retailers": product.retailers or [],
-                    "debug_info": {"source": "cache", "cache_age_seconds": age.total_seconds(), "method": "direct_api_cached"}
+                    "all_retailers": filtered_retailers,
+                    "debug_info": {
+                        "source": "cache_filtered",
+                        "cache_age_seconds": age.total_seconds(),
+                        "method": "direct_api_cached_filtered"
+                    }
                 })
+
             else:
                 # Fetch fresh
                 def call_api():
@@ -203,9 +218,9 @@ def get_product_details():
                     try:
                         if product:
                             product.product_name = info['product_name']
-                            product.best_price = api['price']
+                            product.best_price = api['best_price']
                             product.average_price = api['average_price']
-                            product.best_retailer = api['retailer_name']
+                            product.best_retailer = api["best_retailer"]
                             product.image_url = api.get('image_url')
                             product.retailers = api['all_retailers']
                             product.last_updated = datetime.now(timezone.utc)
@@ -213,9 +228,9 @@ def get_product_details():
                             db.add(ProductDetails(
                                 url=url,
                                 product_name=info['product_name'],
-                                best_price=api['price'],
+                                best_price=api['best_price'],
                                 average_price=api['average_price'],
-                                best_retailer=api['retailer_name'],
+                                best_retailer=api["best_retailer"],
                                 image_url=api.get('image_url'),
                                 retailers=api['all_retailers'],
                                 last_updated=datetime.now(timezone.utc)
@@ -253,26 +268,6 @@ def aggregate_prices():
 def search_products():
     """
     Search for products on BuyWisely
-    
-    Request body:
-    {
-        "query": "search term",
-        "limit": 20  // optional, default 50
-    }
-    
-    Returns:
-    {
-        "query": "search term",
-        "results": [
-            {
-                "title": "Product Name",
-                "url": "https://buywisely.com.au/product/...",
-                "offers_count": "Compare 10 offers",
-                "slug": "product-slug"
-            }
-        ],
-        "total_found": 5
-    }
     """
     try:
         data = request.json or {}
@@ -389,11 +384,13 @@ def get_product_image():
             else get_high_quality_image(slug)
         )
 
-        return jsonify({
+        response = jsonify({
             "slug": slug,
             "size": size,
             "image_url": image_url
         })
+        response.headers['Cache-Control'] = 'public, max-age=604800'
+        return response
 
     except Exception as e:
         print("💥 Image API error:", e)

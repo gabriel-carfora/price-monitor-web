@@ -12,16 +12,20 @@ import type { UserSettings } from '../types';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Info, TestTube } from 'lucide-react';
+import { useRef } from 'react';
+import NotificationToast from '../components/NotificationToast';
 
 export default function Settings() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const initialExclusions = useRef<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-
+  const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' | 'info'; duration?: number } | null>(null);
   const username = localStorage.getItem('username');
+  const [retailerInput, setRetailerInput] = useState('');
 
   useEffect(() => {
     if (!username) {
@@ -30,7 +34,10 @@ export default function Settings() {
     }
 
     API.get(`/users/${username}`)
-      .then((res) => setSettings(res.data))
+      .then((res) => {
+        setSettings(res.data);
+        initialExclusions.current = res.data.retailer_exclusions || [];
+      })
       .catch(() => setSettings(null));
   }, [username, navigate]);
 
@@ -72,18 +79,41 @@ export default function Settings() {
 
   const handleSave = async () => {
     if (!username || !settings) return;
-    
-    setSaving(true);
-    setError(null);
-    
-    try {
-      await API.put(`/users/${username}`, settings);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to save settings');
-    } finally {
-      setSaving(false);
-    }
-  };
+  
+  setSaving(true);
+  setError(null);
+
+  const exclusionsChanged = JSON.stringify(initialExclusions.current.sort()) !== JSON.stringify(settings.retailer_exclusions.slice().sort());
+
+  try {
+    await API.put(`/users/${username}`, settings);
+
+   if (exclusionsChanged) {
+  await API.post(`/refresh-prices?user=${username}`);
+  await API.post('/cache/clear');
+
+  localStorage.setItem('settingsChanged', 'true'); // ← 👈 set flag
+
+  initialExclusions.current = settings.retailer_exclusions.slice();
+  setToast({
+    message: 'Retailer exclusions updated and product prices refreshed.',
+    type: 'success',
+    duration: 4000,
+  });
+} else {
+  setToast({
+    message: 'Settings saved successfully.',
+    type: 'success',
+    duration: 3000,
+  });
+}
+
+  } catch (err: any) {
+    setError(err.response?.data?.error || 'Failed to save settings');
+  } finally {
+    setSaving(false);
+  }
+};
 
   const sendTest = async () => {
     if (!username) return;
@@ -163,8 +193,15 @@ export default function Settings() {
             <span className="text-sm font-medium">Retailer Exclusions</span>
             <input
               className="border border-gray-300 p-2 w-full rounded mt-1"
-              value={settings.retailer_exclusions.join(', ')}
-              onChange={(e) => handleExclusions(e.target.value)}
+              value={retailerInput}
+              onChange={(e) => setRetailerInput(e.target.value)}
+              onBlur={() => {
+                if (!settings) return;
+                setSettings({
+                  ...settings,
+                  retailer_exclusions: retailerInput.split(',').map((s) => s.trim()).filter(Boolean),
+                });
+              }}
               placeholder="e.g., ebay, kmart"
             />
             <div className="text-xs text-gray-500 mt-1">
@@ -235,6 +272,16 @@ export default function Settings() {
           </button>
         </div>
       </div>
+      {toast && (
+  <NotificationToast
+    message={toast.message}
+    type={toast.type}
+    duration={toast.duration}
+    onClose={() => setToast(null)}
+  />
+)}
+
     </Layout>
+    
   );
 }

@@ -135,6 +135,10 @@ class BuyWiselyDirectAPI:
         retailers_summary = []
 
         for url, entries in data.items():
+            print(f"🔍 Checking {url}")
+            print(f"⛔ Exclusion list: {excluded_retailers}")
+            print(f"🔍 URL domain: {urlparse(url).netloc.lower()}")
+
             if any(ex in url.lower() for ex in excluded_retailers):
                 continue
 
