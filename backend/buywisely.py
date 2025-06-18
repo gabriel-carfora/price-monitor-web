@@ -33,7 +33,7 @@ class BuyWiselyDirectAPI:
 
         api_url = f"https://buywisely.com.au/api/product/{slug}"
         cmd = [
-            "curl", "-s", "-L", "--tlsv1.2", "-k", "--verbose",
+            "curl", "-s", "-L", "--tlsv1.2", "-k",
             "-H", f"Referer: {product_url}",
             api_url
         ]
@@ -41,11 +41,6 @@ class BuyWiselyDirectAPI:
         print(f"🔧 Running command: {' '.join(cmd)}")
 
         result = subprocess.run(cmd, capture_output=True, text=True)
-        print("🧾 curl stderr (full):\n", result.stderr)
-
-        print(f"🔁 curl return code: {result.returncode}")
-        print(f"🧾 curl stderr: {result.stderr.strip()}")
-        print(f"📄 curl stdout (first 500 chars):\n{result.stdout[:500]}")
 
         if result.returncode != 0:
             print(f"❌ curl error: {result.stderr.strip()}")

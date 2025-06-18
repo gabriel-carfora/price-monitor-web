@@ -1,3 +1,4 @@
+import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
@@ -17,6 +18,7 @@ from scraper import scrape_product_async
 from pushover import send_pushover
 from cache import cache
 from scheduler import price_scheduler
+from image_scraper import get_high_quality_image, get_thumbnail_image
 
 # Initialize API client
 buywisely_api = BuyWiselyDirectAPI()
@@ -247,6 +249,159 @@ def aggregate_prices():
     threading.Thread(target=lambda: print("Starting background price aggregation..."))
     return jsonify({"status": "Aggregation started", "message": "Price aggregation process initiated."})
 
+@app.route("/api/search", methods=["POST"])
+def search_products():
+    """
+    Search for products on BuyWisely
+    
+    Request body:
+    {
+        "query": "search term",
+        "limit": 20  // optional, default 50
+    }
+    
+    Returns:
+    {
+        "query": "search term",
+        "results": [
+            {
+                "title": "Product Name",
+                "url": "https://buywisely.com.au/product/...",
+                "offers_count": "Compare 10 offers",
+                "slug": "product-slug"
+            }
+        ],
+        "total_found": 5
+    }
+    """
+    try:
+        data = request.json or {}
+        query = data.get('query', '').strip()
+        limit = min(data.get('limit', 20), 20)  # Cap at 100 results
+        
+        if not query:
+            return jsonify({"error": "Query parameter is required"}), 400
+        
+        if len(query) < 2:
+            return jsonify({"error": "Query must be at least 2 characters"}), 400
+        
+        print(f"🔍 API Search request: '{query}' (limit: {limit})")
+        
+        # Import the scraper
+        from search_scraper import search_products_sync
+        
+        # Perform the search
+        results = search_products_sync(query, max_results=limit)
+        
+        response = {
+            "query": query,
+            "results": results,
+            "total_found": len(results),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        print(f"✅ Search completed: {len(results)} results for '{query}'")
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"💥 Search API error: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "error": "Search failed", 
+            "details": str(e)
+        }), 500
+
+@app.route("/api/search/suggestions", methods=["POST"])
+def get_search_suggestions():
+    """
+    Get quick product suggestions for a search query
+    
+    Request body:
+    {
+        "query": "search term",
+        "limit": 10  // optional, default 10
+    }
+    
+    Returns:
+    {
+        "query": "search term",
+        "suggestions": [
+            {
+                "title": "Product Name",
+                "url": "https://buywisely.com.au/product/...",
+                "offers": "Compare 10 offers"
+            }
+        ]
+    }
+    """
+    try:
+        data = request.json or {}
+        query = data.get('query', '').strip()
+        limit = min(data.get('limit', 10), 20)  # Cap at 20 suggestions
+        
+        if not query:
+            return jsonify({"error": "Query parameter is required"}), 400
+        
+        if len(query) < 2:
+            return jsonify({"error": "Query must be at least 2 characters"}), 400
+        
+        print(f"💡 API Suggestions request: '{query}' (limit: {limit})")
+        
+        # Import the scraper
+        from search_scraper import get_suggestions_sync
+        
+        # Get suggestions
+        suggestions = get_suggestions_sync(query, limit=limit)
+        
+        response = {
+            "query": query,
+            "suggestions": suggestions,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        print(f"✅ Suggestions completed: {len(suggestions)} results for '{query}'")
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"💥 Suggestions API error: {e}")
+        return jsonify({
+            "error": "Suggestions failed", 
+            "details": str(e)
+        }), 500
+
+@app.route("/api/product-image", methods=["POST", "OPTIONS"])
+def get_product_image():
+    if request.method == "OPTIONS":
+        # Preflight request: respond with CORS-safe OK
+        return '', 204
+
+    try:
+        data = request.get_json(force=True) or {}
+        slug = data.get("slug", "").strip()
+        size = data.get("size", "thumb").lower()
+
+        if not slug or size not in ("thumb", "fullsize"):
+            return jsonify({"error": "Missing or invalid parameters"}), 400
+
+        image_url = (
+            get_thumbnail_image(slug)
+            if size == "thumb"
+            else get_high_quality_image(slug)
+        )
+
+        return jsonify({
+            "slug": slug,
+            "size": size,
+            "image_url": image_url
+        })
+
+    except Exception as e:
+        print("💥 Image API error:", e)
+        return jsonify({
+            "error": "Image lookup failed",
+            "details": str(e)
+        }), 500
+    
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     print("Starting price refresh scheduler...")

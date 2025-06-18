@@ -30,10 +30,24 @@ export default function Product() {
   const [product, setProduct] = useState<ProductDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fetchedImageUrl, setFetchedImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!productUrl) return;
-    
+    if (productUrl) {
+      const slug = decodeURIComponent(productUrl).split('/').pop();
+      if (slug) {
+        API.post('/product-image', { slug, size: 'fullsize' })
+          .then(res => {
+            if (res.data.image_url) {
+              setFetchedImageUrl(res.data.image_url);
+            }
+          })
+          .catch(err => {
+            console.warn("❌ Failed to fetch image from API:", err);
+          });
+    }
+}
     fetchProductDetails();
   }, [productUrl]);
 
@@ -174,15 +188,16 @@ export default function Product() {
         </div>
 
         {/* Product Image */}
-        {product.image_url && (
-          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-            <img
-              src={product.image_url}
-              alt={product.product_name}
-              className="w-full max-w-sm mx-auto h-48 sm:h-64 object-contain"
-            />
-          </div>
-        )}
+{fetchedImageUrl && (
+  <div className="flex justify-center mb-6">
+    <img
+      src={fetchedImageUrl}
+      alt={product.product_name}
+      className="rounded-lg shadow-md max-w-xs w-full h-auto object-contain"
+    />
+  </div>
+)}
+
 
         {/* Price Summary - Mobile Optimized */}
         <div className="bg-white rounded-lg shadow-sm p-4 mb-4">

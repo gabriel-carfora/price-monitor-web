@@ -3,8 +3,9 @@ import API from '../api';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import ProductCard from '../components/ProductCard';
+import ProductSearch from '../components/ProductSearch';
 import { cache, cacheKeys } from '../utils/cache';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus, Search } from 'lucide-react';
 
 interface ProductInfo {
   url: string;
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const [newUrl, setNewUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [addingProduct, setAddingProduct] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const navigate = useNavigate();
 
   const username = localStorage.getItem('username');
@@ -99,15 +101,16 @@ export default function Dashboard() {
     }
   };
 
-  const addUrl = async () => {
-    if (!newUrl) return;
+  const addUrl = async (url?: string) => {
+    const urlToAdd = url || newUrl;
+    if (!urlToAdd) return;
     
     try {
       setAddingProduct(true);
       
       // Add to watchlist
-      await API.post(`/watchlist/${username}`, { url: newUrl });
-      const updatedWatchlist = [...watchlist, newUrl];
+      await API.post(`/watchlist/${username}`, { url: urlToAdd });
+      const updatedWatchlist = [...watchlist, urlToAdd];
       setWatchlist(updatedWatchlist);
       
       // Update cache
@@ -122,19 +125,21 @@ export default function Dashboard() {
       
       // Fetch updated product details
       try {
-        const newProductInfo = await API.post('/product-details', { urls: [newUrl] });
+        const newProductInfo = await API.post('/product-details', { urls: [urlToAdd] });
         
         // Update product info state
         setProductInfo(prev => ({
           ...prev,
-          [newUrl]: newProductInfo.data[0]
+          [urlToAdd]: newProductInfo.data[0]
         }));
       } catch (infoError) {
         console.warn('Failed to fetch product info for new URL:', infoError);
       }
       
-      // Clear the input
-      setNewUrl('');
+      // Clear the input if it was from manual entry
+      if (!url) {
+        setNewUrl('');
+      }
     } catch (error) {
       console.error('Failed to add product:', error);
     } finally {
@@ -187,9 +192,22 @@ export default function Dashboard() {
       <h1 className="text-xl font-bold mb-4 text-center">Your Watchlist</h1>
 
       <div className="space-y-3">
+          <ProductSearch 
+            onAddProduct={(url) => addUrl(url)} 
+            isAddingProduct={addingProduct}
+          />
+        {/* Current Watchlist */}
         <ul className="space-y-2">
           {watchlist.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center">No items yet.</p>
+            <div className="text-center py-8">
+              <div className="text-gray-400 mb-2">
+                <Plus className="w-12 h-12 mx-auto mb-2" />
+              </div>
+              <p className="text-sm text-gray-500 mb-2">No items in your watchlist yet.</p>
+              <p className="text-xs text-gray-400">
+                Use the search above or add a BuyWisely URL below to get started.
+              </p>
+            </div>
           ) : (
             watchlist.map((url) => {
               const info = productInfo[url];
@@ -198,66 +216,75 @@ export default function Dashboard() {
               console.log(`Product info for ${url}:`, info);
               
               return (
-                <ProductCard
-                  key={url}
-                  productName={info?.product_name || 'Loading...'}
-                  bestPrice={info?.best_price || 0}
-                  averagePrice={info?.average_price || 0}
-                  retailer={info?.retailer || 'Unknown'}
-                  onClick={() => navigateToProduct(url)}
-                  onRemove={() => deleteUrl(url)}
-                  loading={loading && !info?.best_price}
-                />
+              <ProductCard
+                key={url}
+                productName={info?.product_name || 'Loading...'}
+                bestPrice={info?.best_price || 0}
+                averagePrice={info?.average_price || 0}
+                retailer={info?.retailer || 'Unknown'}
+                imageUrl={info?.image_url}
+                slug={url.split('/').pop()} // extract slug from URL
+                onClick={() => navigateToProduct(url)}
+                onRemove={() => deleteUrl(url)}
+                loading={loading && !info?.best_price}
+              />
               );
             })
           )}
         </ul>
 
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Add BuyWisely URL"
-            value={newUrl}
-            onChange={(e) => setNewUrl(e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter') {
-                addUrl();
-              }
-            }}
-            className="border border-gray-300 p-2 w-full rounded pr-10"
-          />
-          {addingProduct && (
-            <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
-              <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
-            </div>
-          )}
+        {/* Manual URL Input */}
+        <div className="bg-gray-50 rounded-lg p-3">
+          <div className="text-sm text-gray-600 mb-2">Or add a BuyWisely URL directly:</div>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="https://buywisely.com.au/product/..."
+              value={newUrl}
+              onChange={(e) => setNewUrl(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  addUrl();
+                }
+              }}
+              className="border border-gray-300 p-2 w-full rounded pr-10 text-sm"
+            />
+            {addingProduct && (
+              <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
+              </div>
+            )}
+          </div>
         </div>
         
         <button
-          onClick={addUrl}
-          disabled={addingProduct}
+          onClick={() => addUrl()}
+          disabled={addingProduct || !newUrl.trim()}
           className={`bg-blue-600 text-white w-full py-2 rounded ${
-            addingProduct ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'
+            addingProduct || !newUrl.trim() ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'
           }`}
         >
-          {addingProduct ? 'Adding...' : 'Add'}
+          {addingProduct ? 'Adding...' : 'Add URL'}
         </button>
 
-        <button
-          onClick={triggerAggregation}
-          disabled={loading}
-          className={`text-sm text-gray-500 mt-2 underline block w-full text-center ${
-            loading ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
-        >
-          {loading ? 'Refreshing...' : 'Refresh Prices'}
-        </button>
-        <button
-          onClick={() => navigate('/settings')}
-          className="text-sm text-blue-700 mt-2 underline block w-full text-center"
-        >
-          Go to Settings
-        </button>
+        {/* Action Buttons */}
+        <div className="space-y-2 pt-2 border-t border-gray-200">
+          <button
+            onClick={triggerAggregation}
+            disabled={loading}
+            className={`text-sm text-gray-500 mt-2 underline block w-full text-center ${
+              loading ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+          >
+            {loading ? 'Refreshing...' : 'Refresh Prices'}
+          </button>
+          <button
+            onClick={() => navigate('/settings')}
+            className="text-sm text-blue-700 mt-2 underline block w-full text-center"
+          >
+            Go to Settings
+          </button>
+        </div>
       </div>
     </Layout>
   );
