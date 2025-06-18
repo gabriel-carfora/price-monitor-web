@@ -189,7 +189,7 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <h1 className="text-xl font-bold mb-4 text-center">Your Watchlist</h1>
+      <h1 className="text-xl font-bold mb-4 text-center">Watchlist</h1>
 
       <div className="space-y-3">
           <ProductSearch 

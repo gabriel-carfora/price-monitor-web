@@ -90,7 +90,6 @@ export default function Settings() {
 
    if (exclusionsChanged) {
   await API.post(`/refresh-prices?user=${username}`);
-  await API.post('/cache/clear');
 
   localStorage.setItem('settingsChanged', 'true'); // ← 👈 set flag
 

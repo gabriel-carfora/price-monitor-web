@@ -125,13 +125,9 @@ const handleAddProduct = async (url: string) => {
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-      <h2 className="font-semibold mb-3 flex items-center">
-        <Search className="w-5 h-5 mr-2" />
-        Search Products
-      </h2>
 
       {/* Search Input */}
-      <div className="flex space-x-2 mb-4">
+      <div className="flex space-x-2">
         <div className="flex-1 relative">
           <input
             type="text"

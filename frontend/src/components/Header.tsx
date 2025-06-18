@@ -33,7 +33,7 @@ export default function Header() {
           className="flex-1 sm:flex-initial"
         >
           <h1 className="text-lg font-semibold text-gray-800 text-center sm:text-left">
-            💸 PriceWatcher
+            💸 PriceWatch
           </h1>
         </button>
 

@@ -99,7 +99,7 @@ useEffect(() => {
       {hasSavings && (
         <div className="flex items-center text-green-600 text-xs">
           <TrendingDown className="w-3 h-3 mr-1" />
-          <span>{savingsPercentage}% average</span>
+          <span>{savingsPercentage}%</span>
         </div>
       )}
     </div>
